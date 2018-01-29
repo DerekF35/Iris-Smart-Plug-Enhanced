@@ -1,5 +1,5 @@
 /**
- *  Modified Iris Smart Plug for determining whether outlet is above or below configured threshold.
+ *  Modified Iris Smart Plug for showing power output on main tile.
  *  Credit: https://github.com/blebson/Iris-Smart-Plug
  */
 
