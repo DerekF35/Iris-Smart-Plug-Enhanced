@@ -17,6 +17,9 @@ metadata {
 		// indicates that device keeps track of heartbeat (in state.heartbeat)
 		attribute "heartbeat", "string"
 		attribute "timerStart", "number"
+		attribute "lastAbove", "number"
+		attribute "timerRunning", "number"
+		attribute "isRunning", "number"
 
 		attribute "energyDisplay", "string"
 		attribute "elapsedTimeDisplay", "string"
@@ -47,6 +50,10 @@ metadata {
 
         section("Running Threshold") {
         	input "powerThreshold", "number", title: "Power to consider running", description:  "If power is greater than configuration, it will be set to 'Running'.", defaultValue: 1, range: "0..600"
+        }
+
+        section("Off Threshold (Seconds") {
+        	input "requiredTimeOff", "number", title: "Amount of time below threshold to be off.", description:  "Amount of seconds under threshold to be switched to idle.", defaultValue: 15, range: "0..600"
         }
 
         section("Reporting Intervals") {
@@ -111,7 +118,6 @@ def parse(String description) {
 	state.heartbeat = Calendar.getInstance().getTimeInMillis()
 	if (state.timerStart == null)
 	{
-		state.timerStart = Calendar.getInstance().getTimeInMillis()
 		state.energy = 0.0
 	}
 
@@ -160,18 +166,27 @@ def calculateAndShowEnergy()
     sendEvent(name: "energy", value: energyValue, displayed: false)
     sendEvent(name: "energyDisplay", value: String.format("%6.3f kWh",energyValue), displayed: false)
 
-    if(device.currentValue("power") > powerThreshold ){
-    	sendEvent(name: "isRunning", value: "running", displayed: true)
+    if( device.currentValue("power") > powerThreshold ){
+		state.lastAbove = Calendar.getInstance().getTimeInMillis()
+		if( state.isRunning == 0 ){
+    		sendEvent(name: "isRunning", value: "running", displayed: true)
+			state.timerStart = Calendar.getInstance().getTimeInMillis()
+			state.isRunning = 1
+		}
     }
     else {
-    	sendEvent(name: "isRunning", value: "idle", displayed: true)
+    	if( state.isRunning == 1 ){
+			state.timerRunning = state.timerRunning + ( ((long)Calendar.getInstance().getTimeInMillis() - state.timerStart ) / 1000 )
+    		if( ((Calendar.getInstance().getTimeInMillis() - state.lastAbove) / 1000 ) > requiredTimeOff ){
+    			sendEvent(name: "isRunning", value: "idle", displayed: true)
+				state.isRunning = 0
+			}
+		}
     }
 
-    def currentTime = Calendar.getInstance().getTimeInMillis()
-    def timeDifference = ((long)currentTime - state.timerStart)/1000; // in seconds
-    int h = (int) (timeDifference / (3600));
-    int m = (int) ((timeDifference - (h * 3600)) / 60);
-    int s = (int) (timeDifference - (h * 3600) - m * 60);
+    int h = (int) (state.timerRunning / (3600));
+    int m = (int) ((state.timerRunning - (h * 3600)) / 60);
+    int s = (int) (state.timerRunning - (h * 3600) - m * 60);
     int d = (int) h >= 24 ? h / 24 : 0
     h = d > 0 ? h % 24 : h
 
@@ -187,8 +202,9 @@ def on() {
 }
 
 def resetEnergyUsage() {
+	state.timerRunning = 0
+	state.isRunning = 0
 	sendEvent(name: "energy", value: 0.0, displayed: false)
-	state.timerStart = Calendar.getInstance().getTimeInMillis()
 	sendEvent(name: "energyDisplay", value: String.format("%6.3f kWh",0.0), displayed: false)
 	sendEvent(name: "elapsedTimeDisplay", value: String.format("%dd %02d:%02d:%02d", 0, 0, 0, 0), displayed: false)
 }
